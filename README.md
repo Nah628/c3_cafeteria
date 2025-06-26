@@ -18,50 +18,51 @@ C3学食班の開発用レポジトリです．GitHubを使用して共同開発
 
 ## 🚀共同開発の手順
 ### 最初に一度だけ行うこと
-1. gitをインストールする  
+**1. gitをインストールする**  
    バージョンを確認して、gitのバージョン情報が出力されればOK
    ~~~
    git --version
    ~~~
    
-2. このレポジトリをクローンする
+**2. このレポジトリをクローンする**
    ~~~
    git clone https://github.com/Nah628/c3_cafeteria.git
    ~~~
    
-3. ユーザー情報の登録
+**3. ユーザー情報の登録**
    ~~~
    git config --global user.name "自分の名前"
    git config --global user.email "自分のメールアドレス"
    ~~~
 
 ### 通常の開発フロー
-1. 最新の状態を取得
+**1. 最新の状態を取得**
    ~~~
    git pull origin main
    ~~~
    
-2. 作業用ブランチを作成
+**2. 作業用ブランチを作成**
    ~~~
-   git checkout -b branch名　#例：git checkout -b yohimura_test
+   git checkout -b branch名
    ~~~
+   例：`git checkout -b yohimura_test`
 > [!WARNING]
 >   `main`を直接触らない！
    
-4. ブランチ内でファイルを作成・編集  
+**3. ブランチ内でファイルを作成・編集**  
    VScode等で作成したファイルは、Gitで作業しているレポジトリのフォルダの中に保存する。
    
-6. 変更をステージしてコミット  
+**4. 変更をステージしてコミット**  
    例えば、`hello.py`というファイルをコミットしたいなら
    ~~~
    git add hello.py
    git commit -m "Add hello.py"
    ~~~
    
-7. 自分のブランチをリモートにプッシュ
+**5. 自分のブランチをリモートにプッシュ**
    ~~~
    git push origin yoshimura_test
    ~~~
    
-8. GitHub上でPull Requestを作成  
+**6. GitHub上でPull Requestを作成**  
    `main`ブランチにマージするように申請
