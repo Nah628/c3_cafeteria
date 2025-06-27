@@ -1,10 +1,185 @@
 <!DOCTYPE html>
-<html>
+<html lang="ja">
 <head>
-    <meta charset="utf-8">
-    <title>TestRepository</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>食堂 空席確認システム</title>
+    <style>
+        body { 
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
+            margin: 20px; 
+            background-color: #f4f4f4; 
+            color: #333; 
+        }
+        h1 { 
+            text-align: center; 
+            color: #0056b3; 
+        }
+        .container { 
+            display: flex; 
+            justify-content: center; 
+            align-items: flex-start; 
+            gap: 30px; 
+            margin-top: 20px; 
+            flex-wrap: wrap; /* 小さい画面で折り返す */
+        }
+        .camera-feed, .seat-status-display {
+            border: 2px solid #ddd; 
+            border-radius: 8px; 
+            overflow: hidden; 
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1); 
+            background-color: #fff; /* 白い背景を追加 */
+            padding: 15px; /* パディングを追加 */
+        }
+        .camera-feed {
+            flex: 2; /* カメラフィードはより広いスペースを占める */
+            min-width: 400px; /* 最小幅 */
+            max-width: 800px; /* 最大幅 */
+        }
+        .seat-status-display {
+            flex: 1; /* 座席状況は残りのスペースを占める */
+            min-width: 300px; /* 最小幅 */
+            max-width: 450px; /* 最大幅 */
+        }
+
+        .seat-list {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 15px;
+            margin-top: 20px;
+            justify-content: center; /* センタリング */
+        }
+        .seat-item {
+            border: 1px solid #eee;
+            padding: 15px;
+            border-radius: 8px;
+            text-align: center;
+            font-weight: bold;
+            transition: background-color 0.3s ease, border-color 0.3s ease;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+            min-width: 120px; /* アイテムの最小幅 */
+            flex-grow: 1; /* アイテムが利用可能なスペースを埋めるように拡張 */
+            box-sizing: border-box; /* パディングとボーダーを幅に含める */
+        }
+        .seat-item.empty {
+            background-color: #e6ffe6;
+            border-color: #4CAF50;
+            color: #2e7d32;
+        }
+        .seat-item.occupied {
+            background-color: #ffe6e6;
+            border-color: #f44336;
+            color: #c62828;
+        }
+        .seat-item.unknown {
+            background-color: #f0f0f0;
+            border-color: #9e9e9e;
+            color: #616161;
+        }
+        .update-time { 
+            text-align: center; 
+            margin-top: 20px; 
+            font-size: 0.9em; 
+            color: #666; 
+        }
+        
+        .camera-feed img {
+            display: block;
+            max-width: 100%; /* 親要素の幅に合わせて最大幅を設定 */
+            height: auto;    /* アスペクト比を維持 */
+            width: 100%;    /* 親要素の幅いっぱいに広げる */
+        }
+
+        /* レスポンシブデザインの調整 */
+        @media (max-width: 768px) {
+            .container {
+                flex-direction: column; /* 縦並びに変更 */
+                align-items: center; /* 中央揃え */
+            }
+            .camera-feed, .seat-status-display {
+                width: 90%; /* 幅を広げる */
+                max-width: none; /* 最大幅の制限を解除 */
+            }
+        }
+    </style>
 </head>
 <body>
-    <h1>This is for working test.</h1>
+    <h1>食堂 空席確認システム</h1>
+    
+    <div class="container">
+        
+        <div class="camera-feed">
+            <h2>ライブ映像</h2>
+            <img src="{{ url_for('video_feed') }}" alt="Camera Feed">
+        </div>
+        
+        
+        <div class="seat-status-display">
+            <h2>座席空席状況 (ディスプレイ表示風)</h2>
+            <div class="seat-list" id="seat-list">
+                <!-- 座席アイテムはJavaScriptによって動的に追加されます -->
+            </div>
+            <div class="update-time" id="update-time">最終更新: 取得中...</div>
+        </div>
+        
+    </div>
+    
+
+    <script>
+        const seatList = document.getElementById('seat-list');
+        const updateTimeDiv = document.getElementById('update-time');
+        let initializedSeats = false; // 座席リストが初期化されたかどうかのフラグ
+
+        async function fetchSeatStatus() {
+            try {
+                const response = await fetch('/api/seat_status');
+                const data = await response.json();
+
+                if (!initializedSeats) {
+                    // 初回のみ座席アイテムを生成
+                    seatList.innerHTML = ''; // 既存のアイテムをクリア（念のため）
+                    for (const seatId in data) {
+                        const seatItem = document.createElement('div');
+                        seatItem.id = `seat-${seatId}`;
+                        seatItem.classList.add('seat-item', 'unknown');
+                        // 座席IDから表示名を生成 (例: "seat_1" -> "座席 1")
+                        // より複雑な名前が必要な場合は、サーバーサイドから別の情報を受け取るか、ここでマップを定義
+                        const displayName = seatId.replace('_', ' ').replace('seat ', '座席 ');
+                        seatItem.innerHTML = `<strong>${displayName}</strong><br><span class="status">不明</span>`;
+                        seatList.appendChild(seatItem);
+                    }
+                    initializedSeats = true; // 初期化済みフラグを立てる
+                }
+
+                // 以降はステータスを更新するだけ
+                for (const seatId in data) {
+                    const status = data[seatId] || "unknown"; // ステータスが提供されない場合は"unknown"
+                    const seatItem = document.getElementById(`seat-${seatId}`);
+                    if (seatItem) {
+                        seatItem.classList.remove('empty', 'occupied', 'unknown'); // 既存のクラスを削除
+                        seatItem.classList.add(status); // 新しいステータスクラスを追加
+                        // ステータス表示テキストを更新
+                        seatItem.querySelector('.status').textContent = (status === 'empty' ? '空席' : (status === 'occupied' ? '使用中' : '不明'));
+                    } else {
+                        // もしinitializedSeatsがtrueなのにアイテムが見つからない場合は、
+                        // 座席定義が途中で変更された可能性があるが、基本的には発生しないはず
+                        console.warn(`Warning: Seat item for ${seatId} not found.`);
+                    }
+                }
+                updateTimeDiv.textContent = `最終更新: ${new Date().toLocaleTimeString()}`;
+
+            } catch (error) {
+                console.error('座席状況の取得に失敗しました:', error);
+                updateTimeDiv.textContent = `最終更新: 取得エラー`;
+                // エラー発生時は初期化フラグをリセットしない（再読み込み時まで状態を維持）
+            }
+        }
+
+        // 3秒ごとに座席状況を更新
+        setInterval(fetchSeatStatus, 3000);
+
+        // ページロード時に初回取得
+        fetchSeatStatus();
+    </script>
 </body>
 </html>
