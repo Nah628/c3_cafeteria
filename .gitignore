@@ -1,0 +1,16 @@
+# 仮想環境
+venv/
+
+# 動画ファイル
+src/ue.mov
+
+# YOLOモデルファイル
+src/yolo11n.pt
+
+# macOS
+.DS_Store
+
+# その他の無視したいファイル（例：一時ファイル、ログなど）
+*.log
+*.tmp
+__pycache__/
