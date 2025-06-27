@@ -8,6 +8,8 @@ import sys
 from flask import Flask, jsonify, Response, render_template, request 
 from ultralytics import YOLO
 
+#kasaiです。push 確認
+
 # --- Global variables and initial settings ---
 app = Flask(__name__)
 
