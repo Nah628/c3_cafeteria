@@ -1,356 +1,230 @@
 <!DOCTYPE html>
 <html lang="ja">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ウェブから座席を定義 (グラフィカル)</title>
+    <title>座席位置を定義</title>
     <style>
         body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
             margin: 20px;
-            background-color: #f4f4f4;
-            color: #333;
+            font-family: sans-serif;
+            background: #f4f4f4;
         }
+
         h1 {
             text-align: center;
             color: #0056b3;
         }
+
         .container {
             display: flex;
             justify-content: center;
             align-items: flex-start;
-            gap: 30px;
-            margin-top: 20px;
+            gap: 20px;
             flex-wrap: wrap;
         }
-        .video-panel, .form-panel {
-            border: 2px solid #ddd;
-            border-radius: 8px;
-            overflow: hidden;
-            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
-            background-color: #fff;
-            padding: 20px;
-        }
+
         .video-panel {
-            flex: 2;
-            min-width: 400px;
-            /*max-width: 800px;*/
-            position: relative; /* 子要素のCanvasを絶対配置するため */
-        }
-        .form-panel {
-            flex: 1;
-            min-width: 300px;
-            max-width: 450px;
-        }
-        .video-panel img {
-            display: block;
-            max-width: 100%;
-            height: auto;
-            width: 100%;
+            position: relative;
         }
 
-        .seat-canvas {
+        .video-panel img {
+            display: block;
+            width: 100%;
+            height: auto;
+        }
+
+        canvas.seat-canvas {
             position: absolute;
             top: 0;
             left: 0;
-            width: 100%; /* これを追加または確認 */
-            height: 100%; /* これを追加または確認 */
+            pointer-events: auto;
             cursor: crosshair;
         }
-        /* ... 既存のスタイル ... */
 
-        label {
-            display: block;
-            margin-bottom: 8px;
-            font-weight: bold;
+        .form-panel {
+            width: 320px;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
         }
-        button {
+
+        .button-group {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        .button-group button {
+            flex: 1;
+            padding: 15px;
+            font-size: 16px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            white-space: nowrap;
+        }
+
+        #saveSeatsBtn {
             background-color: #007bff;
             color: white;
-            padding: 10px 20px;
-            border: none;
-            border-radius: 5px;
-            cursor: pointer;
-            font-size: 16px;
-            transition: background-color 0.3s ease;
-            margin-right: 10px;
-            margin-bottom: 10px;
-        }
-        button:hover {
-            background-color: #0056b3;
-        }
-        button#clearSeatsBtn {
-            background-color: #dc3545;
-        }
-        button#clearSeatsBtn:hover {
-            background-color: #c82333;
-        }
-        #message {
-            margin-top: 20px;
-            padding: 10px;
-            border-radius: 4px;
-            font-weight: bold;
-        }
-        #message.success {
-            background-color: #e6ffe6;
-            color: #2e7d32;
-            border: 1px solid #4CAF50;
-        }
-        #message.error {
-            background-color: #ffe6e6;
-            color: #c62828;
-            border: 1px solid #f44336;
-        }
-        #definedSeatsList p {
-            margin: 5px 0;
-            padding: 5px;
-            background-color: #f8f8f8;
-            border: 1px solid #eee;
-            border-radius: 3px;
-            word-break: break-all;
         }
 
-        /* レスポンシブデザイン */
-        @media (max-width: 768px) {
-            .container {
-                flex-direction: column;
-                align-items: center;
-            }
-            .video-panel, .form-panel {
-                width: 90%;
-                max-width: none;
-            }
+        #clearSeatsBtn {
+            background-color: #dc3545;
+            color: white;
+        }
+
+        #goToCheckBtn {
+            background-color: #28a745;
+            color: white;
+        }
+
+        .button-group button:hover {
+            opacity: 0.9;
         }
     </style>
 </head>
+
 <body>
-    <h1>ウェブから座席を定義 (グラフィカル)</h1>
+    <h1>座席位置を定義</h1>
 
     <div class="container">
-
         <div class="video-panel">
-            <h2>基準映像 (最初のフレーム)</h2>
-            <!-- ここを変更: srcを/first_frame_feedに -->
             <img id="videoFeedImg" src="{{ url_for('first_frame_feed') }}" alt="First Frame">
             <canvas id="seatCanvas" class="seat-canvas"></canvas>
         </div>
 
         <div class="form-panel">
-            <h2>座席の管理</h2>
-            <p>基準映像上でマウスをドラッグして座席の領域を定義してください。</p>
-            <div id="definedSeatsList">
-                <!-- 定義された座席がJavaScriptによってここに表示される -->
-                <p>定義された座席はありません。</p>
+            <div class="button-group">
+                <button id="saveSeatsBtn">✅ 座席を保存</button>
+                <button id="clearSeatsBtn">🗑️ クリア</button>
+                <button id="goToCheckBtn">▶️ 空席情報の確認</button>
             </div>
-            <button id="saveSeatsBtn">定義された座席を保存</button>
-            <button id="clearSeatsBtn">すべての座席をクリア</button>
-            <div id="message"></div>
         </div>
-
     </div>
 
     <script>
+        const imgActualWidth = 1280;  // 実際のYOLO検出サイズ（動画フレームのサイズ）
+        const imgActualHeight = 720;
+
         const videoFeedImg = document.getElementById('videoFeedImg');
         const seatCanvas = document.getElementById('seatCanvas');
         const ctx = seatCanvas.getContext('2d');
         const saveSeatsBtn = document.getElementById('saveSeatsBtn');
         const clearSeatsBtn = document.getElementById('clearSeatsBtn');
-        const messageDiv = document.getElementById('message');
-        const definedSeatsList = document.getElementById('definedSeatsList');
+        const goToCheckBtn = document.getElementById('goToCheckBtn');
 
-        let drawing = false;
-        let startX, startY;
-        let definedSeats = []; // [ [x1, y1, x2, y2], ... ]
+        let definedSeats = [];
+        let startX, startY, drawing = false;
 
-        // get_first_frame()が返すフレームの解像度
-        let imgActualWidth = 3840; // ここを実際の最初のフレームの解像度に合わせてください
-        let imgActualHeight = 2160; // ここを実際の最初のフレームの解像度に合わせてください
+        function resizeCanvasToMatchImage() {
+            seatCanvas.width = videoFeedImg.clientWidth;
+            seatCanvas.height = videoFeedImg.clientHeight;
+            seatCanvas.style.width = seatCanvas.width + 'px';
+            seatCanvas.style.height = seatCanvas.height + 'px';
+        }
 
-        // 画像のロードが完了したらCanvasのサイズを設定
         videoFeedImg.onload = () => {
-            // Canvasのサイズをimg要素の現在の表示サイズに合わせる
-            seatCanvas.width = videoFeedImg.offsetWidth;
-            seatCanvas.height = videoFeedImg.offsetHeight;
-
-            // 初期描画と既存座席のロード
+            resizeCanvasToMatchImage();
+            console.log("live-video natural size:", videoFeedImg.naturalWidth, videoFeedImg.naturalHeight);
+            console.log("live-video displayed size:", videoFeedImg.clientWidth, videoFeedImg.clientHeight);
             drawAllSeats();
-            loadExistingSeats();
         };
 
-        // ウィンドウのリサイズにも対応
-        const resizeCanvas = () => {
-            seatCanvas.width = videoFeedImg.offsetWidth;
-            seatCanvas.height = videoFeedImg.offsetHeight;
-            drawAllSeats(); // サイズ変更後に再描画
-        };
+        window.addEventListener('resize', () => {
+            resizeCanvasToMatchImage();
+            drawAllSeats();
+        });
 
-        window.addEventListener('resize', resizeCanvas);
-
-        // マウスイベントのリスナー
         seatCanvas.addEventListener('mousedown', (e) => {
+            const rect = seatCanvas.getBoundingClientRect();
+            startX = e.clientX - rect.left;
+            startY = e.clientY - rect.top;
             drawing = true;
-            // Canvas要素内での相対座標を取得
-            startX = e.offsetX;
-            startY = e.offsetY;
         });
 
         seatCanvas.addEventListener('mousemove', (e) => {
             if (!drawing) return;
+            const rect = seatCanvas.getBoundingClientRect();
+            const currentX = e.clientX - rect.left;
+            const currentY = e.clientY - rect.top;
 
-            // Canvasをクリアして、確定済みの座席を再描画
             ctx.clearRect(0, 0, seatCanvas.width, seatCanvas.height);
             drawAllSeats();
 
-            // 現在描画中の矩形を赤色で描画
             ctx.strokeStyle = 'red';
             ctx.lineWidth = 2;
-            ctx.strokeRect(startX, startY, e.offsetX - startX, e.offsetY - startY);
+            ctx.strokeRect(startX, startY, currentX - startX, currentY - startY);
         });
 
         seatCanvas.addEventListener('mouseup', (e) => {
             if (!drawing) return;
             drawing = false;
 
-            const endX = e.offsetX;
-            const endY = e.offsetY;
+            const rect = seatCanvas.getBoundingClientRect();
+            const endX = e.clientX - rect.left;
+            const endY = e.clientY - rect.top;
 
-            // 座標を正規化 (x1 < x2, y1 < y2 を保証)
-            const x1_display = Math.min(startX, endX);
-            const y1_display = Math.min(startY, endY);
-            const x2_display = Math.max(startX, endX);
-            const y2_display = Math.max(startY, endY);
+            const x1 = Math.min(startX, endX);
+            const y1 = Math.min(startY, endY);
+            const x2 = Math.max(startX, endX);
+            const y2 = Math.max(startY, endY);
 
-            // 小さすぎる領域は無視 (誤クリック防止)
-            if ((x2_display - x1_display) > 5 && (y2_display - y1_display) > 5) {
-                // 表示座標を実際のビデオフレームの座標にスケーリング
-                const scaleX = imgActualWidth / seatCanvas.width;
-                const scaleY = imgActualHeight / seatCanvas.height;
+            const scaleX = imgActualWidth / seatCanvas.width;
+            const scaleY = imgActualHeight / seatCanvas.height;
 
-                const x1_actual = Math.round(x1_display * scaleX);
-                const y1_actual = Math.round(y1_display * scaleY);
-                const x2_actual = Math.round(x2_display * scaleX);
-                const y2_actual = Math.round(y2_display * scaleY);
-
-                definedSeats.push([x1_actual, y1_actual, x2_actual, y2_actual]);
-                updateDefinedSeatsList(); // UIリストを更新
+            if ((x2 - x1) > 5 && (y2 - y1) > 5) {
+                definedSeats.push([
+                    Math.round(x1 * scaleX),
+                    Math.round(y1 * scaleY),
+                    Math.round(x2 * scaleX),
+                    Math.round(y2 * scaleY)
+                ]);
             }
 
-            // Canvasをクリアして、すべての確定済み座席を再描画
             ctx.clearRect(0, 0, seatCanvas.width, seatCanvas.height);
             drawAllSeats();
         });
 
-        // すべての確定済み座席をCanvasに描画する関数
-        // すべての確定済み座席をCanvasに描画する関数
         function drawAllSeats() {
-            if (!imgActualWidth || !imgActualHeight || !seatCanvas.width || !seatCanvas.height) {
-                return;
-            }
+            const scaleX = seatCanvas.width / imgActualWidth;
+            const scaleY = seatCanvas.height / imgActualHeight;
 
-            // 実際の座標から表示座標へのスケーリングファクタを計算
-            const scaleX_display = seatCanvas.width / imgActualWidth;
-            const scaleY_display = seatCanvas.height / imgActualHeight;
-
-            ctx.strokeStyle = 'lime'; // 緑色
-            ctx.lineWidth = 2;
-            definedSeats.forEach(seatCoords => {
-                const [x1_actual, y1_actual, x2_actual, y2_actual] = seatCoords;
-                // 実際の座標を表示座標に変換
-                const x1_display = x1_actual * scaleX_display;
-                const y1_display = y1_actual * scaleY_display;
-                const x2_display = x2_actual * scaleX_display; // ここも計算しておく
-                const y2_display = y2_actual * scaleY_display; // ここも計算しておく
-
-                // 修正点: height の計算を y2_display - y1_display に変更
-                ctx.strokeRect(x1_display, y1_display, x2_display - x1_display, y2_display - y1_display);
+            definedSeats.forEach(([x1, y1, x2, y2]) => {
+                ctx.strokeStyle = 'lime';
+                ctx.lineWidth = 2;
+                ctx.strokeRect(x1 * scaleX, y1 * scaleY, (x2 - x1) * scaleX, (y2 - y1) * scaleY);
             });
         }
 
-        // 定義された座席リスト (UI) を更新する関数
-        function updateDefinedSeatsList() {
-            if (definedSeats.length === 0) {
-                definedSeatsList.innerHTML = '<p>定義された座席はありません。</p>';
-                return;
-            }
-            definedSeatsList.innerHTML = '';
-            definedSeats.forEach((coords, index) => {
-                const seatItem = document.createElement('p');
-                seatItem.textContent = `seat_${index + 1}: [${coords.join(', ')}]`;
-                definedSeatsList.appendChild(seatItem);
-            });
-        }
+        clearSeatsBtn.onclick = () => {
+            definedSeats = [];
+            ctx.clearRect(0, 0, seatCanvas.width, seatCanvas.height);
+        };
 
-        // 保存ボタンのイベントリスナー
-        saveSeatsBtn.addEventListener('click', async () => {
-            const seatsData = {};
-            definedSeats.forEach((coords, index) => {
-                seatsData[`seat_${index + 1}`] = coords;
+        saveSeatsBtn.onclick = async () => {
+            console.log("保存時の座標（フル解像度基準）:", definedSeats);
+
+            const data = {};
+            definedSeats.forEach((coords, i) => {
+                data[`seat_${i + 1}`] = coords;
             });
 
-            const payload = {
-                seat_definitions: seatsData
-            };
+            await fetch('/api/save_seat_definitions', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ seat_definitions: data })
+            });
 
-            try {
-                const response = await fetch('/api/save_seat_definitions', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify(payload)
-                });
+            alert("保存しました！");
+        };
 
-                const result = await response.json();
-
-                if (response.ok) {
-                    messageDiv.className = 'success';
-                    messageDiv.textContent = result.message;
-                } else {
-                    messageDiv.className = 'error';
-                    messageDiv.textContent = `エラー: ${result.message || '不明なエラーが発生しました。'}`;
-                }
-            } catch (error) {
-                messageDiv.className = 'error';
-                messageDiv.textContent = `ネットワークエラー: ${error.message}`;
-                console.error('保存処理中にエラーが発生しました:', error);
-            }
-        });
-
-        // クリアボタンのイベントリスナー
-        clearSeatsBtn.addEventListener('click', () => {
-            definedSeats = []; // 座席リストを空にする
-            ctx.clearRect(0, 0, seatCanvas.width, seatCanvas.height); // Canvasをクリア
-            updateDefinedSeatsList(); // UIリストを更新
-            messageDiv.className = '';
-            messageDiv.textContent = 'すべての座席定義をクリアしました。';
-        });
-
-        // 既存の座席定義をロードして描画する関数
-        async function loadExistingSeats() {
-            try {
-                const response = await fetch('/api/get_all_seat_coords');
-                if (response.ok) {
-                    const data = await response.json();
-                    if (data && data.seat_definitions) {
-                        definedSeats = Object.values(data.seat_definitions);
-                        updateDefinedSeatsList();
-                        drawAllSeats();
-                        messageDiv.className = 'success';
-                        messageDiv.textContent = '既存の座席定義をロードしました。';
-                    } else {
-                         messageDiv.className = '';
-                         messageDiv.textContent = '既存の座席定義は見つかりませんでした。';
-                    }
-                } else {
-                    messageDiv.className = 'error';
-                    messageDiv.textContent = '既存の座席定義のロードに失敗しました。';
-                }
-            } catch (error) {
-                console.error('既存の座席定義のロード中にエラー:', error);
-                messageDiv.className = 'error';
-                messageDiv.textContent = '既存の座席定義のロード中にネットワークエラーが発生しました。';
-            }
-        }
+        goToCheckBtn.onclick = () => {
+            window.location.href = "/";
+        };
     </script>
 </body>
+
 </html>
