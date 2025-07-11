@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>座席位置を定義</title>
+    <style>
+        body {
+            margin: 20px;
+            font-family: sans-serif;
+            background: #f4f4f4;
+        }
+
+        h1 {
+            text-align: center;
+            color: #0056b3;
+        }
+
+        .container {
+            display: flex;
+            justify-content: center;
+            align-items: flex-start;
+            gap: 20px;
+            flex-wrap: wrap;
+        }
+
+        .video-panel {
+            position: relative;
+        }
+
+        .video-panel img {
+            display: block;
+            width: 100%;
+            height: auto;
+        }
+
+        canvas.seat-canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            pointer-events: auto;
+            cursor: crosshair;
+        }
+
+        .form-panel {
+            width: 320px;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        .button-group {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        .button-group button {
+            flex: 1;
+            padding: 15px;
+            font-size: 16px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            white-space: nowrap;
+        }
+
+        #saveSeatsBtn {
+            background-color: #007bff;
+            color: white;
+        }
+
+        #clearSeatsBtn {
+            background-color: #dc3545;
+            color: white;
+        }
+
+        #goToCheckBtn {
+            background-color: #28a745;
+            color: white;
+        }
+
+        .button-group button:hover {
+            opacity: 0.9;
+        }
+    </style>
+</head>
+
+<body>
+    <h1>座席位置を定義</h1>
+
+    <div class="container">
+        <div class="video-panel">
+            <img id="videoFeedImg" src="{{ url_for('first_frame_feed') }}" alt="First Frame">
+            <canvas id="seatCanvas" class="seat-canvas"></canvas>
+        </div>
+
+        <div class="form-panel">
+            <div class="button-group">
+                <button id="saveSeatsBtn">✅ 座席を保存</button>
+                <button id="clearSeatsBtn">🗑️ クリア</button>
+                <button id="goToCheckBtn">▶️ 空席情報の確認</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const imgActualWidth = 1280;  // 実際のYOLO検出サイズ（動画フレームのサイズ）
+        const imgActualHeight = 720;
+
+        const videoFeedImg = document.getElementById('videoFeedImg');
+        const seatCanvas = document.getElementById('seatCanvas');
+        const ctx = seatCanvas.getContext('2d');
+        const saveSeatsBtn = document.getElementById('saveSeatsBtn');
+        const clearSeatsBtn = document.getElementById('clearSeatsBtn');
+        const goToCheckBtn = document.getElementById('goToCheckBtn');
+
+        let definedSeats = [];
+        let startX, startY, drawing = false;
+
+        function resizeCanvasToMatchImage() {
+            seatCanvas.width = videoFeedImg.clientWidth;
+            seatCanvas.height = videoFeedImg.clientHeight;
+            seatCanvas.style.width = seatCanvas.width + 'px';
+            seatCanvas.style.height = seatCanvas.height + 'px';
+        }
+
+        videoFeedImg.onload = () => {
+            resizeCanvasToMatchImage();
+            console.log("live-video natural size:", videoFeedImg.naturalWidth, videoFeedImg.naturalHeight);
+            console.log("live-video displayed size:", videoFeedImg.clientWidth, videoFeedImg.clientHeight);
+            drawAllSeats();
+        };
+
+        window.addEventListener('resize', () => {
+            resizeCanvasToMatchImage();
+            drawAllSeats();
+        });
+
+        seatCanvas.addEventListener('mousedown', (e) => {
+            const rect = seatCanvas.getBoundingClientRect();
+            startX = e.clientX - rect.left;
+            startY = e.clientY - rect.top;
+            drawing = true;
+        });
+
+        seatCanvas.addEventListener('mousemove', (e) => {
+            if (!drawing) return;
+            const rect = seatCanvas.getBoundingClientRect();
+            const currentX = e.clientX - rect.left;
+            const currentY = e.clientY - rect.top;
+
+            ctx.clearRect(0, 0, seatCanvas.width, seatCanvas.height);
+            drawAllSeats();
+
+            ctx.strokeStyle = 'red';
+            ctx.lineWidth = 2;
+            ctx.strokeRect(startX, startY, currentX - startX, currentY - startY);
+        });
+
+        seatCanvas.addEventListener('mouseup', (e) => {
+            if (!drawing) return;
+            drawing = false;
+
+            const rect = seatCanvas.getBoundingClientRect();
+            const endX = e.clientX - rect.left;
+            const endY = e.clientY - rect.top;
+
+            const x1 = Math.min(startX, endX);
+            const y1 = Math.min(startY, endY);
+            const x2 = Math.max(startX, endX);
+            const y2 = Math.max(startY, endY);
+
+            const scaleX = imgActualWidth / seatCanvas.width;
+            const scaleY = imgActualHeight / seatCanvas.height;
+
+            if ((x2 - x1) > 5 && (y2 - y1) > 5) {
+                definedSeats.push([
+                    Math.round(x1 * scaleX),
+                    Math.round(y1 * scaleY),
+                    Math.round(x2 * scaleX),
+                    Math.round(y2 * scaleY)
+                ]);
+            }
+
+            ctx.clearRect(0, 0, seatCanvas.width, seatCanvas.height);
+            drawAllSeats();
+        });
+
+        function drawAllSeats() {
+            const scaleX = seatCanvas.width / imgActualWidth;
+            const scaleY = seatCanvas.height / imgActualHeight;
+
+            definedSeats.forEach(([x1, y1, x2, y2]) => {
+                ctx.strokeStyle = 'lime';
+                ctx.lineWidth = 2;
+                ctx.strokeRect(x1 * scaleX, y1 * scaleY, (x2 - x1) * scaleX, (y2 - y1) * scaleY);
+            });
+        }
+
+        clearSeatsBtn.onclick = () => {
+            definedSeats = [];
+            ctx.clearRect(0, 0, seatCanvas.width, seatCanvas.height);
+        };
+
+        saveSeatsBtn.onclick = async () => {
+            console.log("保存時の座標（フル解像度基準）:", definedSeats);
+
+            const data = {};
+            definedSeats.forEach((coords, i) => {
+                data[`seat_${i + 1}`] = coords;
+            });
+
+            await fetch('/api/save_seat_definitions', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ seat_definitions: data })
+            });
+
+            alert("保存しました！");
+        };
+
+        goToCheckBtn.onclick = () => {
+            window.location.href = "/";
+        };
+    </script>
+</body>
+
+</html>

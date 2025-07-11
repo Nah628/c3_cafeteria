@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>食堂 空席確認システム</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            background-color: #f4f4f4;
+            color: #333;
+        }
+
+        h1 {
+            text-align: center;
+            color: #0056b3;
+            margin: 20px 0;
+        }
+
+        .container {
+            display: flex;
+            justify-content: center;
+            gap: 30px;
+            margin: 0 20px;
+            flex-wrap: wrap;
+        }
+
+        .camera-feed {
+            flex: 2;
+            max-width: 800px;
+        }
+
+        .camera-feed img {
+            display: block;
+            width: 100%;
+            height: auto;
+            margin: 0;
+            padding: 0;
+            border: none;
+        }
+
+        .seat-status-display {
+            flex: 1;
+            max-width: 450px;
+            padding: 15px;
+            background-color: #fff;
+            border: 2px solid #ddd;
+            border-radius: 8px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+        }
+
+        .seat-list {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 15px;
+            margin-top: 20px;
+            justify-content: center;
+        }
+
+        .seat-item {
+            border: 1px solid #eee;
+            padding: 15px;
+            border-radius: 8px;
+            text-align: center;
+            font-weight: bold;
+            transition: background-color 0.3s ease;
+            min-width: 120px;
+            flex-grow: 1;
+        }
+
+        .seat-item.empty {
+            background-color: #e6ffe6;
+            border-color: #4CAF50;
+            color: #2e7d32;
+        }
+
+        .seat-item.occupied {
+            background-color: #ffe6e6;
+            border-color: #f44336;
+            color: #c62828;
+        }
+
+        .seat-item.unknown {
+            background-color: #f0f0f0;
+            border-color: #9e9e9e;
+            color: #616161;
+        }
+
+        .update-time {
+            text-align: center;
+            margin-top: 20px;
+            font-size: 0.9em;
+            color: #666;
+        }
+
+        .btn-large {
+            display: block;
+            margin: 0 auto 20px;
+            padding: 15px 30px;
+            font-size: 18px;
+            font-weight: bold;
+            color: white;
+            background-color: #007bff;
+            border-radius: 8px;
+            text-decoration: none;
+            text-align: center;
+            width: fit-content;
+        }
+
+        @media (max-width: 768px) {
+            .container {
+                flex-direction: column;
+                align-items: center;
+            }
+
+            .camera-feed,
+            .seat-status-display {
+                width: 90%;
+                max-width: none;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <h1>食堂 空席確認システム</h1>
+
+    <a href="/define_seats_web" class="btn-large">🛠️ 座席定義ページへ</a>
+
+    <div class="container">
+        <div class="camera-feed">
+            <img id="live-video" src="{{ url_for('video_feed') }}" alt="Camera Feed">
+            <script>
+                // フル解像度（Python側で固定しているサイズを入れてください）
+                const imgActualWidth = 3840;  // 例: 横3840px
+                const imgActualHeight = 2160; // 例: 縦2160px
+
+                const videoImg = document.getElementById('live-video');
+                const parent = videoImg.parentNode;
+
+                // canvas要素作成＆親に追加
+                const canvas = document.createElement('canvas');
+                const ctx = canvas.getContext('2d');
+                parent.style.position = 'relative';  // 位置基準をrelativeに
+                canvas.style.position = 'absolute';
+                canvas.style.top = '0';
+                canvas.style.left = '0';
+                canvas.style.pointerEvents = 'none'; // クリック無効化
+                parent.appendChild(canvas);
+
+                // サイズ調整関数
+                function resizeCanvas() {
+                    canvas.width = videoImg.clientWidth;
+                    canvas.height = videoImg.clientHeight;
+                    canvas.style.width = videoImg.clientWidth + 'px';
+                    canvas.style.height = videoImg.clientHeight + 'px';
+                }
+
+                // バウンディングボックス描画関数
+                /*
+                function drawBoxes(boxes) {
+                    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+                    const scaleX = canvas.width / imgActualWidth;
+                    const scaleY = canvas.height / imgActualHeight;
+
+                    boxes.forEach(box => {
+                        const [x1, y1, x2, y2] = box;
+                        ctx.strokeStyle = 'lime';
+                        ctx.lineWidth = 3;
+                        ctx.strokeRect(
+                            x1 * scaleX,
+                            y1 * scaleY,
+                            (x2 - x1) * scaleX,
+                            (y2 - y1) * scaleY
+                        );
+                    });
+                }
+                */
+
+                let latestBoxes = [];
+
+                async function fetchBoxes() {
+                    try {
+                        const res = await fetch('/api/person_boxes');
+                        latestBoxes = await res.json();
+                        drawBoxes(latestBoxes);
+                    } catch (e) {
+                        console.error('バウンディングボックス取得失敗', e);
+                    }
+                }
+
+                // 初期＆リサイズ時にキャンバスサイズ調整
+                window.addEventListener('resize', () => {
+                    resizeCanvas();
+                    drawBoxes(latestBoxes);
+                });
+
+                videoImg.addEventListener('load', () => {
+                    resizeCanvas();
+                    fetchBoxes();
+                });
+
+                // 1秒ごとに最新ボックス取得＆描画更新
+                setInterval(fetchBoxes, 1000);
+
+                // ページ読み込み時初回処理
+                if (videoImg.complete) {
+                    resizeCanvas();
+                    fetchBoxes();
+                }
+               </script>
+        </div>
+
+        <div class="seat-status-display">
+            <h2>座席空席状況</h2>
+            <div class="seat-list" id="seat-list"></div>
+            <div class="update-time" id="update-time">最終更新: 取得中...</div>
+        </div>
+    </div>
+
+    <script>
+
+        const liveVideo = document.getElementById('live-video');
+
+        liveVideo.onload = () => {
+             console.log("live-video natural size:", liveVideo.naturalWidth, liveVideo.naturalHeight);
+             console.log("live-video displayed size:", liveVideo.clientWidth, liveVideo.clientHeight);
+            };
+
+        const seatList = document.getElementById('seat-list');
+        const updateTimeDiv = document.getElementById('update-time');
+        let initializedSeats = false;
+
+        async function fetchSeatStatus() {
+            try {
+                const res = await fetch('/api/seat_status');
+                const data = await res.json();
+
+                if (!initializedSeats) {
+                    seatList.innerHTML = '';
+                    for (const seatId in data) {
+                        const seatItem = document.createElement('div');
+                        seatItem.id = `seat-${seatId}`;
+                        seatItem.classList.add('seat-item', 'unknown');
+                        const displayName = seatId.replace('_', ' ').replace('seat ', '座席 ');
+                        seatItem.innerHTML = `<strong>${displayName}</strong><br><span class="status">不明</span>`;
+                        seatList.appendChild(seatItem);
+                    }
+                    initializedSeats = true;
+                }
+
+                for (const seatId in data) {
+                    const status = data[seatId] || "unknown";
+                    const seatItem = document.getElementById(`seat-${seatId}`);
+                    if (seatItem) {
+                        seatItem.className = `seat-item ${status}`;
+                        seatItem.querySelector('.status').textContent = (
+                            status === 'empty' ? '空席' :
+                                status === 'occupied' ? '使用中' : '不明'
+                        );
+                    }
+                }
+
+                updateTimeDiv.textContent = `最終更新: ${new Date().toLocaleTimeString()}`;
+            } catch (err) {
+                console.error('座席状況の取得に失敗:', err);
+                updateTimeDiv.textContent = `最終更新: 取得エラー`;
+            }
+        }
+
+        setInterval(fetchSeatStatus, 3000);
+        fetchSeatStatus();
+    </script>
+</body>
+
+</html>
