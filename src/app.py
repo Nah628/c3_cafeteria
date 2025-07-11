@@ -8,8 +8,6 @@ import sys
 from flask import Flask, jsonify, Response, render_template, request 
 from ultralytics import YOLO
 
-# test by yoshi
-
 # --- Global variables and initial settings ---
 app = Flask(__name__)
 
@@ -28,6 +26,43 @@ CONFIG_FILE_PATH = "seats_config.json"
 # 第一フレーム
 first_frame_cached = None
 first_frame_lock = threading.Lock()
+
+# グローバル変数として最新のpersonボックスリストを保持
+latest_person_boxes = []
+boxes_lock = threading.Lock()
+
+
+def detect_and_update_seats_thread():
+    global latest_person_boxes
+    # --- (省略) ---
+    while True:
+        # --- (省略) ---
+        # 検出結果取得
+        results = model(img_for_detection, verbose=False, imgsz=640)
+        boxes = results[0].boxes
+        names = results[0].names
+
+        temp_statuses = {seat_id: "empty" for seat_id in seat_definitions_with_coords.keys()}
+
+        person_boxes_tmp = []
+
+        for box_idx, box in enumerate(boxes):
+            cls_id = int(box.cls[0])
+            label = names[cls_id]
+            if label != "person":
+                continue
+
+            # バウンディングボックスの座標(フル解像度)
+            px1, py1, px2, py2 = map(int, box.xyxy[0].cpu().numpy())
+            person_boxes_tmp.append([px1, py1, px2, py2])
+
+            # --- 座席判定処理は既存のまま ---
+            # (略)
+
+        # 最新のperson_boxesをスレッドロック付きで更新
+        with boxes_lock:
+            latest_person_boxes = person_boxes_tmp
+
 
 # 初めの1フレーム取得
 def get_first_frame():
@@ -112,6 +147,13 @@ def load_seat_configurations_initial(config_file=CONFIG_FILE_PATH):
 # Configファイル読み込み
 seat_definitions_with_coords = load_seat_configurations_initial()
 
+# 空席判定用
+# カウンターを最初に初期化しておく（グローバルで）
+seat_stay_counters = {seat_id: 0 for seat_id in seat_definitions_with_coords.keys()}
+seat_leave_counters = {seat_id: 0 for seat_id in seat_definitions_with_coords.keys()}
+
+STAY_THRESHOLD = 50   # 何フレーム以上重なっていれば「着席」
+LEAVE_THRESHOLD = 50  # 何フレーム以上重ならなければ「空席」
 
 ##########################
 ### Webからのリクエストで返す値
@@ -137,24 +179,22 @@ frame_lock = threading.Lock()
 
 # 物体検出と空席判定関数(スレッドで実行)
 def detect_and_update_seats_thread():
-    # カメラ設定
-    cap = None
+    global latest_person_boxes
 
-    
-    ### カメラ起動
-    # FPS設定(1sに何フレーム処理するか)
+    cap = None
     TARGET_FPS = 5
     TARGET_FRAME_TIME = 1.0 / TARGET_FPS
+
     cap = cv2.VideoCapture(CAMERA_SOURCE)
     if cap.isOpened():
-        # 明示的に解像度を設定
-        cap.set(cv2.CAP_PROP_FRAME_WIDTH, 3840)
-        cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 2160)
+        cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
+        cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
 
-    ### 空席判定ループ(フレームごと)
+    logged_frame_size = False
+
     while True:
-        ### カメラ起動判定
         start_loop_time = time.perf_counter()
+
         if cap is None or not cap.isOpened():
             print(f"ビデオソースを開こうとしています: {CAMERA_SOURCE}")
             cap = cv2.VideoCapture(CAMERA_SOURCE)
@@ -173,102 +213,126 @@ def detect_and_update_seats_thread():
             time.sleep(1)
             continue
 
+        if not logged_frame_size:
+            h, w, _ = frame.shape
+            print(f"DEBUG: YOLO input frame size: width={w}, height={h}")
+            logged_frame_size = True
 
-        ### 空席判定
-        img_for_detection = frame.copy()
+        # YOLO処理用に縮小
+        img_for_detection = cv2.resize(frame, (960, 540))
 
-        # 空席状態の結果
-        # フレーム変数への競合を避けるためブロック
+        # フル → 処理解像度へスケーリング比
+        scale_x = 960 / 1280
+        scale_y = 540 / 720
+
+        # スレッド競合防止しつつ座席定義読み出し
         with status_lock:
-            temp_statuses = {seat_id: "empty" for seat_id in seat_definitions_with_coords.keys()}
+            current_defs = seat_definitions_with_coords.copy()
+            temp_statuses = {seat_id: "empty" for seat_id in current_defs.keys()}
 
-        # 人数カウンタ
-        detected_person_count = 0
+        # スケーリングされた座席定義
+        scaled_defs = {
+            seat_id: [
+                int(coords[0] * scale_x),
+                int(coords[1] * scale_y),
+                int(coords[2] * scale_x),
+                int(coords[3] * scale_y)
+            ]
+            for seat_id, coords in current_defs.items()
+        }
 
-        # modelでこのフレームを判定
-        """
-        boxes:検出された全ての物体情報(座標など)
-        names:検出された全ての物体のクラス名
-        この2つの変数で同じ物体は同じインデックスでリストになっている
-        """
         results = model(img_for_detection, verbose=False, imgsz=640)
         boxes = results[0].boxes
         names = results[0].names
 
-        # 席情報更新
+        person_boxes_tmp = []
+
         for box_idx, box in enumerate(boxes):
-            # box_id:1,2,3,..,
-            # box: {座標などの情報}
-            # box.clc[0]はこのバウンディングボックスのインデックスを文字列で返す
             cls_id = int(box.cls[0])
             label = names[cls_id]
             if label != "person":
                 continue
-            
-            # 人がいる時の処理
-            # カウント
-            detected_person_count += 1
 
-            # (px1,py1)バウンディングボックスの左上の座標
-            # (px2,py2)バウンディングボックスの右下の座標
             px1, py1, px2, py2 = map(int, box.xyxy[0].cpu().numpy())
+            person_boxes_tmp.append([px1, py1, px2, py2])
 
-            
-            # frameに長方形を表示(p:座標, (0,255,0):緑, 2:線の太さ)
-            cv2.rectangle(frame, (px1, py1), (px2, py2), (0, 255, 0), 2)
-            # frameに文字を表示(テキスト, p:座標, フォント, 大きさ, (0,255,0):緑, 2:線の太さ)
-            cv2.putText(frame, f"Person {box_idx+1}", (px1, py1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
-
-            # 現在の座席情報(seat_definitions_with_coords)を取得
-            #with status_lock:
-            current_defs = seat_definitions_with_coords.copy() 
-
-            # 座席ごとにバウンディングボックスとの重なりを計算し，RATEより大きければoccupiedにする
-            for seat_id_key, seat_coords in current_defs.items():
+            # 座席ごとの判定ループ
+            for seat_id_key, seat_coords in scaled_defs.items():
                 sx1, sy1, sx2, sy2 = seat_coords
-
-                ix1 = max(sx1, px1)
-                iy1 = max(sy1, py1)
-                ix2 = min(sx2, px2)
-                iy2 = min(sy2, py2)
-
-                inter_area = max(0, ix2 - ix1) * max(0, iy2 - iy1)
-                seat_area = (sx2 - sx1) * (sy2 - sy1)
-
-                overlap_ratio = 0
-                if seat_area > 0:
-                    overlap_ratio = inter_area / seat_area
-
-                if overlap_ratio > occupied_rate:
+                
+                is_overlapping = False
+                
+                for box in person_boxes_tmp:
+                    px1, py1, px2, py2 = box
+                    
+                    ix1 = max(sx1, px1)
+                    iy1 = max(sy1, py1)
+                    ix2 = min(sx2, px2)
+                    iy2 = min(sy2, py2)
+                    
+                    inter_area = max(0, ix2 - ix1) * max(0, iy2 - iy1)
+                    seat_area = (sx2 - sx1) * (sy2 - sy1)
+                    
+                    overlap_ratio = inter_area / seat_area if seat_area > 0 else 0
+                    
+                    if overlap_ratio > occupied_rate:
+                        is_overlapping = True
+                        break
+                
+                if is_overlapping:
+                    seat_stay_counters[seat_id_key] += 1
+                    seat_leave_counters[seat_id_key] = 0    
+                else:
+                    seat_stay_counters[seat_id_key] = 0
+                    seat_leave_counters[seat_id_key] += 1
+                
+                # 状態更新
+                if seat_stay_counters[seat_id_key] >= STAY_THRESHOLD:
                     temp_statuses[seat_id_key] = "occupied"
+                elif seat_leave_counters[seat_id_key] >= LEAVE_THRESHOLD:
+                    temp_statuses[seat_id_key] = "empty"
+                else:
+                    # 前の状態をキープ（変化しない）
+                    temp_statuses[seat_id_key] = current_seat_statuses.get(seat_id_key, "unknown")
 
-        # 空席情報をアップデート
+        with boxes_lock:
+            latest_person_boxes = person_boxes_tmp
+
         with status_lock:
             current_seat_statuses.update(temp_statuses)
 
-        # ラストフレームに現在のフレームを追加
+        # 描画用（元フル解像度 frame に対して scaled_defs を逆変換して描く）
         with frame_lock:
             global last_frame
 
-            # Draw bounding boxes for seats on the frame
-            with status_lock: # Access seat_definitions_with_coords under lock
-                current_defs_for_draw = seat_definitions_with_coords.copy() # Operate on a copy
-            for seat_id, coords in current_defs_for_draw.items():
-                sx1, sy1, sx2, sy2 = coords
+            for seat_id, scaled_coords in scaled_defs.items():
+                # スケーリングを戻してフルサイズ frame に描く（逆変換）
+                sx1 = int(scaled_coords[0] / scale_x)
+                sy1 = int(scaled_coords[1] / scale_y)
+                sx2 = int(scaled_coords[2] / scale_x)
+                sy2 = int(scaled_coords[3] / scale_y)
                 status = current_seat_statuses.get(seat_id, "unknown")
-                color = (0, 255, 0) if status == "empty" else (0, 0, 255) # Green: empty, Red: occupied
+
+                color = (0, 255, 0) if status == "empty" else (0, 0, 255)
                 thickness = 2 if status == "occupied" else 1
 
                 cv2.rectangle(frame, (sx1, sy1), (sx2, sy2), color, thickness)
                 cv2.putText(frame, f"{seat_id}: {status}", (sx1 + 5, sy1 + 20),
-                                 cv2.FONT_HERSHEY_SIMPLEX, 0.6, color, 2)
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.6, color, 2)
+
+            for i, box in enumerate(person_boxes_tmp):
+                # YOLOでの検出結果も同様に逆スケーリングして描画
+                px1 = int(box[0] / scale_x)
+                py1 = int(box[1] / scale_y)
+                px2 = int(box[2] / scale_x)
+                py2 = int(box[3] / scale_y)
+                cv2.rectangle(frame, (px1, py1), (px2, py2), (0, 255, 0), 2)
+                cv2.putText(frame, f"Person {i+1}", (px1, py1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
 
             last_frame = frame.copy()
 
         end_loop_time = time.perf_counter()
         processing_duration = end_loop_time - start_loop_time
-
-        # フレームレートによって決まる1フレームの処理時間以下ならば，その分だけ待機(sleep)して次のフレーム(ループ)を取得
         sleep_duration = TARGET_FRAME_TIME - processing_duration
         if sleep_duration > 0:
             time.sleep(sleep_duration)
@@ -276,7 +340,14 @@ def detect_and_update_seats_thread():
     cap.release()
 
 
+
 # Flaskのルート定義
+
+@app.route('/api/person_boxes')
+def get_person_boxes():
+    with boxes_lock:
+        return jsonify(latest_person_boxes)
+
 
 # 空席情報を返すエンドポイント
 @app.route('/api/seat_status')
@@ -368,14 +439,14 @@ def get_all_seat_coords():
 # 映像の1フレームを返すエンドポイント
 @app.route('/first_frame_feed')
 def first_frame_feed():
-    """動画の最初のフレームをJPEG画像として提供するルート"""
-    frame = get_first_frame() # Get the cached first frame
+    """動画の最初のフレームをJPEG画像として提供するルート（解像度縮小付き）"""
+    frame = get_first_frame()  # 元の高解像度フレームを取得
     if frame is None:
-        # Return an error message or a placeholder image if frame could not be loaded
         return Response("Error: Could not load first frame", status=500, mimetype='text/plain')
 
-    # Encode frame to JPEG format
-    ret, buffer = cv2.imencode('.jpg', frame)
+    # 解像度を960x540に縮小（define_seats_web.html と一致）
+    resized_frame = cv2.resize(frame, (960, 540))  # 幅×高さ
+    ret, buffer = cv2.imencode('.jpg', resized_frame)
     frame_bytes = buffer.tobytes()
     return Response(frame_bytes, mimetype='image/jpeg')
 
