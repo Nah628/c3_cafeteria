@@ -56,10 +56,6 @@
             flex-wrap: wrap;
             gap: 15px; /* アイテム間の隙間 */
             margin-top: 20px;
-            justify-content: center; /* アイテムを中央揃え */
-            /* 必要であれば、全体の最大幅を制御することも可能です */
-            /* max-width: calc(3 * 180px + 2 * 15px); */ /* 例: seat-item幅が180pxの場合 */
-            /* max-width: 570px; */ /* 例えば、合計幅を570pxに固定したい場合 */
         }
 
         .seat-item {
@@ -69,8 +65,6 @@
             text-align: center;
             font-weight: bold;
             transition: background-color 0.3s ease;
-            /* min-width: 120px; */ /* この指定は削除またはコメントアウト */
-            /* flex-grow: 1; */ /* この指定は削除またはコメントアウト */
 
             /* ここから変更または追加 */
             /* 3列にするための幅 */
@@ -288,44 +282,41 @@
         let initializedSeats = false;
 
         async function fetchSeatStatus() {
-        try {
-            const res = await fetch('/api/seat_status');
-            const data = await res.json();
 
-            if (!initializedSeats) {
-                seatList.innerHTML = ''; // 既存の要素をクリア
+            try {
+                const res = await fetch('/api/seat_status');
+                const data = await res.json();
 
-                let seatCount = 0;
+                if (!initializedSeats) {
+                    seatList.innerHTML = '';
+                    for (const seatId in data) {
+                        const seatItem = document.createElement('div');
+                        seatItem.id = `seat-${seatId}`;
+                        seatItem.classList.add('seat-item', 'unknown');
+                        const displayName = seatId.replace('_', ' ').replace('seat ', '座席 ');
+                        seatItem.innerHTML = `<strong>${displayName}</strong><br><span class="status">不明</span>`;
+                        seatList.appendChild(seatItem);
+                    }
+                    initializedSeats = true;
+                }
+
                 for (const seatId in data) {
-                    const seatItem = document.createElement('div');
-                    seatItem.id = `seat-${seatId}`;
-                    seatItem.classList.add('seat-item', 'unknown');
-                    const displayName = seatId.replace('_', ' ').replace('seat ', '座席 ');
-                    seatItem.innerHTML = `<strong>${displayName}</strong><br><span class="status">不明</span>`;
-                    seatList.appendChild(seatItem);
-                    seatCount++;
-
-                    // ここから追加：座席3の後に机の要素を挿入
-                    if (seatCount === 3) {
-                        const tableSeparator = document.createElement('div');
-                        tableSeparator.classList.add('table-separator'); // 新しいクラスを付与
-                        seatList.appendChild(tableSeparator);
+                    const status = data[seatId] || "unknown";
+                    const seatItem = document.getElementById(`seat-${seatId}`);
+                    if (seatItem) {
+                        seatItem.className = `seat-item ${status}`;
+                        seatItem.querySelector('.status').textContent = (
+                            status === 'empty' ? '空席' :
+                                status === 'occupied' ? '使用中' : '不明'
+                        );
                     }
                 }
-                initializedSeats = true;
-            }
 
-            // 既存の座席ステータス更新ロジックはそのまま
-            for (const seatId in data) {
-                const status = data[seatId] || "unknown";
-                const seatItem = document.getElementById(`seat-${seatId}`);
-                if (seatItem) {
-                    seatItem.className = `seat-item ${status}`;
-                    seatItem.querySelector('.status').textContent = (
-                        status === 'empty' ? '空席' :
-                            status === 'occupied' ? '使用中' : '不明'
-                    );
-                }
+                updateTimeDiv.textContent = `最終更新: ${new Date().toLocaleTimeString()}`;
+            } catch (err) {
+                console.error('座席状況の取得に失敗:', err);
+                updateTimeDiv.textContent = `最終更新: 取得エラー`;
+
             }
 
             updateTimeDiv.textContent = `最終更新: ${new Date().toLocaleTimeString()}`;
@@ -335,6 +326,7 @@
         }
     }
         setInterval(fetchSeatStatus, 3000);
+
         fetchSeatStatus();
     </script>
 </body>
