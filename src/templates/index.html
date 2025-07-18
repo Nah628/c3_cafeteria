@@ -54,20 +54,31 @@
         .seat-list {
             display: flex;
             flex-wrap: wrap;
-            gap: 15px;
+            gap: 15px; /* アイテム間の隙間 */
             margin-top: 20px;
-            justify-content: center;
         }
 
         .seat-item {
-            border: 1px solid #eee;
+           border: 1px solid #eee;
             padding: 15px;
             border-radius: 8px;
             text-align: center;
             font-weight: bold;
             transition: background-color 0.3s ease;
-            min-width: 120px;
-            flex-grow: 1;
+
+            /* ここから変更または追加 */
+            /* 3列にするための幅 */
+            width: calc(33.333% - 10px); /* 3列にするための幅。gapの2/3を引く */
+            /* もしくは固定ピクセルで指定する場合の例 */
+            /* width: 180px; */ /* 必要に応じて調整 */
+            box-sizing: border-box; /* paddingとborderをwidthに含める */
+
+            /* background-image 関連の既存のCSSはそのまま */
+            background-position: center 10px;
+            background-repeat: no-repeat;
+            background-size: 50px auto;
+            padding-top: 70px;
+            min-height: 100px;
         }
 
         .seat-item.empty {
@@ -121,6 +132,43 @@
                 max-width: none;
             }
         }
+
+        .table-separator {
+        width: 100%; /* 親要素の幅いっぱいに広げる */
+        height: 30px; /* 机のような区切りの高さ */
+        background-color: #dcdcdc; /* 机の背景色（例：グレー） */
+        margin: 15px 0; /* 上下の余白（座席アイテムのgapと同じくらい） */
+        border-radius: 5px; /* 少し丸みを持たせる */
+        display: flex; /* 中央にテキストを配置する場合 */
+        align-items: center; /* 中央にテキストを配置する場合 */
+        justify-content: center; /* 中央にテキストを配置する場合 */
+        color: #555; /* テキストの色 */
+        font-weight: bold; /* テキストを太字に */
+        /* 必要に応じて影などを追加 */
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        flex-basis: 100%; /* Flexアイテムとして常に新しい行に配置されるようにする */
+    }
+
+    /* レスポンシブ対応のメディアクエリ内にも調整が必要な場合があります */
+    @media (max-width: 768px) {
+        .container {
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .camera-feed,
+        .seat-status-display {
+            width: 90%;
+            max-width: none;
+        }
+
+        /* 画面が小さい時も机の区切りが正しく表示されるようにする */
+        .table-separator {
+            width: 100%; /* 親の90%幅に合わせる */
+        }
+    }
+
+
     </style>
 </head>
 
@@ -216,6 +264,7 @@
             <h2>座席空席状況</h2>
             <div class="seat-list" id="seat-list"></div>
             <div class="update-time" id="update-time">最終更新: 取得中...</div>
+            
         </div>
     </div>
 
@@ -233,6 +282,7 @@
         let initializedSeats = false;
 
         async function fetchSeatStatus() {
+
             try {
                 const res = await fetch('/api/seat_status');
                 const data = await res.json();
@@ -266,10 +316,17 @@
             } catch (err) {
                 console.error('座席状況の取得に失敗:', err);
                 updateTimeDiv.textContent = `最終更新: 取得エラー`;
-            }
-        }
 
-        setInterval(fetchSeatStatus, 5000);
+            }
+
+            updateTimeDiv.textContent = `最終更新: ${new Date().toLocaleTimeString()}`;
+        } catch (err) {
+            console.error('座席状況の取得に失敗:', err);
+            updateTimeDiv.textContent = `最終更新: 取得エラー`;
+        }
+    }
+        setInterval(fetchSeatStatus, 3000);
+
         fetchSeatStatus();
     </script>
 </body>
