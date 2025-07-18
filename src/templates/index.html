@@ -1,185 +1,342 @@
 <!DOCTYPE html>
 <html lang="ja">
+
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>食堂 空席確認システム</title>
     <style>
-        body { 
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
-            margin: 20px; 
-            background-color: #f4f4f4; 
-            color: #333; 
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            background-color: #f4f4f4;
+            color: #333;
         }
-        h1 { 
-            text-align: center; 
-            color: #0056b3; 
+
+        h1 {
+            text-align: center;
+            color: #0056b3;
+            margin: 20px 0;
         }
-        .container { 
-            display: flex; 
-            justify-content: center; 
-            align-items: flex-start; 
-            gap: 30px; 
-            margin-top: 20px; 
-            flex-wrap: wrap; /* 小さい画面で折り返す */
+
+        .container {
+            display: flex;
+            justify-content: center;
+            gap: 30px;
+            margin: 0 20px;
+            flex-wrap: wrap;
         }
-        .camera-feed, .seat-status-display {
-            border: 2px solid #ddd; 
-            border-radius: 8px; 
-            overflow: hidden; 
-            box-shadow: 0 4px 8px rgba(0,0,0,0.1); 
-            background-color: #fff; /* 白い背景を追加 */
-            padding: 15px; /* パディングを追加 */
-        }
+
         .camera-feed {
-            flex: 2; /* カメラフィードはより広いスペースを占める */
-            min-width: 400px; /* 最小幅 */
-            max-width: 800px; /* 最大幅 */
+            flex: 2;
+            max-width: 800px;
         }
+
+        .camera-feed img {
+            display: block;
+            width: 100%;
+            height: auto;
+            margin: 0;
+            padding: 0;
+            border: none;
+        }
+
         .seat-status-display {
-            flex: 1; /* 座席状況は残りのスペースを占める */
-            min-width: 300px; /* 最小幅 */
-            max-width: 450px; /* 最大幅 */
+            flex: 1;
+            max-width: 450px;
+            padding: 15px;
+            background-color: #fff;
+            border: 2px solid #ddd;
+            border-radius: 8px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
         }
 
         .seat-list {
             display: flex;
             flex-wrap: wrap;
-            gap: 15px;
+            gap: 15px; /* アイテム間の隙間 */
             margin-top: 20px;
-            justify-content: center; /* センタリング */
+            justify-content: center; /* アイテムを中央揃え */
+            /* 必要であれば、全体の最大幅を制御することも可能です */
+            /* max-width: calc(3 * 180px + 2 * 15px); */ /* 例: seat-item幅が180pxの場合 */
+            /* max-width: 570px; */ /* 例えば、合計幅を570pxに固定したい場合 */
         }
+
         .seat-item {
-            border: 1px solid #eee;
+           border: 1px solid #eee;
             padding: 15px;
             border-radius: 8px;
             text-align: center;
             font-weight: bold;
-            transition: background-color 0.3s ease, border-color 0.3s ease;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
-            min-width: 120px; /* アイテムの最小幅 */
-            flex-grow: 1; /* アイテムが利用可能なスペースを埋めるように拡張 */
-            box-sizing: border-box; /* パディングとボーダーを幅に含める */
+            transition: background-color 0.3s ease;
+            /* min-width: 120px; */ /* この指定は削除またはコメントアウト */
+            /* flex-grow: 1; */ /* この指定は削除またはコメントアウト */
+
+            /* ここから変更または追加 */
+            /* 3列にするための幅 */
+            width: calc(33.333% - 10px); /* 3列にするための幅。gapの2/3を引く */
+            /* もしくは固定ピクセルで指定する場合の例 */
+            /* width: 180px; */ /* 必要に応じて調整 */
+            box-sizing: border-box; /* paddingとborderをwidthに含める */
+
+            /* background-image 関連の既存のCSSはそのまま */
+            background-position: center 10px;
+            background-repeat: no-repeat;
+            background-size: 50px auto;
+            padding-top: 70px;
+            min-height: 100px;
         }
+
         .seat-item.empty {
             background-color: #e6ffe6;
             border-color: #4CAF50;
             color: #2e7d32;
         }
+
         .seat-item.occupied {
             background-color: #ffe6e6;
             border-color: #f44336;
             color: #c62828;
         }
+
         .seat-item.unknown {
             background-color: #f0f0f0;
             border-color: #9e9e9e;
             color: #616161;
         }
-        .update-time { 
-            text-align: center; 
-            margin-top: 20px; 
-            font-size: 0.9em; 
-            color: #666; 
-        }
-        
-        .camera-feed img {
-            display: block;
-            max-width: 100%; /* 親要素の幅に合わせて最大幅を設定 */
-            height: auto;    /* アスペクト比を維持 */
-            width: 100%;    /* 親要素の幅いっぱいに広げる */
+
+        .update-time {
+            text-align: center;
+            margin-top: 20px;
+            font-size: 0.9em;
+            color: #666;
         }
 
-        /* レスポンシブデザインの調整 */
+        .btn-large {
+            display: block;
+            margin: 0 auto 20px;
+            padding: 15px 30px;
+            font-size: 18px;
+            font-weight: bold;
+            color: white;
+            background-color: #007bff;
+            border-radius: 8px;
+            text-decoration: none;
+            text-align: center;
+            width: fit-content;
+        }
+
         @media (max-width: 768px) {
             .container {
-                flex-direction: column; /* 縦並びに変更 */
-                align-items: center; /* 中央揃え */
+                flex-direction: column;
+                align-items: center;
             }
-            .camera-feed, .seat-status-display {
-                width: 90%; /* 幅を広げる */
-                max-width: none; /* 最大幅の制限を解除 */
+
+            .camera-feed,
+            .seat-status-display {
+                width: 90%;
+                max-width: none;
             }
         }
+
+        .table-separator {
+        width: 100%; /* 親要素の幅いっぱいに広げる */
+        height: 30px; /* 机のような区切りの高さ */
+        background-color: #dcdcdc; /* 机の背景色（例：グレー） */
+        margin: 15px 0; /* 上下の余白（座席アイテムのgapと同じくらい） */
+        border-radius: 5px; /* 少し丸みを持たせる */
+        display: flex; /* 中央にテキストを配置する場合 */
+        align-items: center; /* 中央にテキストを配置する場合 */
+        justify-content: center; /* 中央にテキストを配置する場合 */
+        color: #555; /* テキストの色 */
+        font-weight: bold; /* テキストを太字に */
+        /* 必要に応じて影などを追加 */
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        flex-basis: 100%; /* Flexアイテムとして常に新しい行に配置されるようにする */
+    }
+
+    /* レスポンシブ対応のメディアクエリ内にも調整が必要な場合があります */
+    @media (max-width: 768px) {
+        .container {
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .camera-feed,
+        .seat-status-display {
+            width: 90%;
+            max-width: none;
+        }
+
+        /* 画面が小さい時も机の区切りが正しく表示されるようにする */
+        .table-separator {
+            width: 100%; /* 親の90%幅に合わせる */
+        }
+    }
+
+
     </style>
 </head>
+
 <body>
     <h1>食堂 空席確認システム</h1>
-    
+
+    <a href="/define_seats_web" class="btn-large">🛠️ 座席定義ページへ</a>
+
     <div class="container">
-        
         <div class="camera-feed">
-            <h2>ライブ映像</h2>
-            <img src="{{ url_for('video_feed') }}" alt="Camera Feed">
+            <img id="live-video" src="{{ url_for('video_feed') }}" alt="Camera Feed">
+            <script>
+                // フル解像度（Python側で固定しているサイズを入れてください）
+                const imgActualWidth = 3840;  // 例: 横3840px
+                const imgActualHeight = 2160; // 例: 縦2160px
+
+                const videoImg = document.getElementById('live-video');
+                const parent = videoImg.parentNode;
+
+                // canvas要素作成＆親に追加
+                //const canvas = document.createElement('canvas');
+                const ctx = canvas.getContext('2d');
+                //parent.style.position = 'relative';  // 位置基準をrelativeに
+                canvas.style.position = 'absolute';
+                canvas.style.top = '0';
+                canvas.style.left = '0';
+                canvas.style.pointerEvents = 'none'; // クリック無効化
+                parent.appendChild(canvas);
+
+                // サイズ調整関数
+                function resizeCanvas() {
+                    canvas.width = videoImg.clientWidth;
+                    canvas.height = videoImg.clientHeight;
+                    canvas.style.width = videoImg.clientWidth + 'px';
+                    canvas.style.height = videoImg.clientHeight + 'px';
+                }
+
+                // バウンディングボックス描画関数
+                function drawBoxes(boxes) {
+                    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+                    const scaleX = canvas.width / imgActualWidth;
+                    const scaleY = canvas.height / imgActualHeight;
+
+                    boxes.forEach(box => {
+                        const [x1, y1, x2, y2] = box;
+                        ctx.strokeStyle = 'lime';
+                        ctx.lineWidth = 3;
+                        ctx.strokeRect(
+                            x1 * scaleX,
+                            y1 * scaleY,
+                            (x2 - x1) * scaleX,
+                            (y2 - y1) * scaleY
+                        );
+                    });
+                }
+
+                let latestBoxes = [];
+
+                async function fetchBoxes() {
+                    try {
+                        const res = await fetch('/api/person_boxes');
+                        latestBoxes = await res.json();
+                        drawBoxes(latestBoxes);
+                    } catch (e) {
+                        console.error('バウンディングボックス取得失敗', e);
+                    }
+                }
+
+                // 初期＆リサイズ時にキャンバスサイズ調整
+                window.addEventListener('resize', () => {
+                    resizeCanvas();
+                    drawBoxes(latestBoxes);
+                });
+
+                videoImg.addEventListener('load', () => {
+                    resizeCanvas();
+                    fetchBoxes();
+                });
+
+                // 1秒ごとに最新ボックス取得＆描画更新
+                setInterval(fetchBoxes, 1000);
+
+                // ページ読み込み時初回処理
+                if (videoImg.complete) {
+                    resizeCanvas();
+                    fetchBoxes();
+                }
+            </script>
         </div>
-        
-        
+
         <div class="seat-status-display">
-            <h2>座席空席状況 (ディスプレイ表示風)</h2>
-            <div class="seat-list" id="seat-list">
-                <!-- 座席アイテムはJavaScriptによって動的に追加されます -->
-            </div>
+            <h2>座席空席状況</h2>
+            <div class="seat-list" id="seat-list"></div>
             <div class="update-time" id="update-time">最終更新: 取得中...</div>
+            
         </div>
-        
     </div>
-    
 
     <script>
+
+        const liveVideo = document.getElementById('live-video');
+
+        liveVideo.onload = () => {
+            console.log("live-video natural size:", liveVideo.naturalWidth, liveVideo.naturalHeight);
+            console.log("live-video displayed size:", liveVideo.clientWidth, liveVideo.clientHeight);
+        };
+
         const seatList = document.getElementById('seat-list');
         const updateTimeDiv = document.getElementById('update-time');
-        let initializedSeats = false; // 座席リストが初期化されたかどうかのフラグ
+        let initializedSeats = false;
 
         async function fetchSeatStatus() {
-            try {
-                const response = await fetch('/api/seat_status');
-                const data = await response.json();
+        try {
+            const res = await fetch('/api/seat_status');
+            const data = await res.json();
 
-                if (!initializedSeats) {
-                    // 初回のみ座席アイテムを生成
-                    seatList.innerHTML = ''; // 既存のアイテムをクリア（念のため）
-                    for (const seatId in data) {
-                        const seatItem = document.createElement('div');
-                        seatItem.id = `seat-${seatId}`;
-                        seatItem.classList.add('seat-item', 'unknown');
-                        // 座席IDから表示名を生成 (例: "seat_1" -> "座席 1")
-                        // より複雑な名前が必要な場合は、サーバーサイドから別の情報を受け取るか、ここでマップを定義
-                        const displayName = seatId.replace('_', ' ').replace('seat ', '座席 ');
-                        seatItem.innerHTML = `<strong>${displayName}</strong><br><span class="status">不明</span>`;
-                        seatList.appendChild(seatItem);
-                    }
-                    initializedSeats = true; // 初期化済みフラグを立てる
-                }
+            if (!initializedSeats) {
+                seatList.innerHTML = ''; // 既存の要素をクリア
 
-                // 以降はステータスを更新するだけ
+                let seatCount = 0;
                 for (const seatId in data) {
-                    const status = data[seatId] || "unknown"; // ステータスが提供されない場合は"unknown"
-                    const seatItem = document.getElementById(`seat-${seatId}`);
-                    if (seatItem) {
-                        seatItem.classList.remove('empty', 'occupied', 'unknown'); // 既存のクラスを削除
-                        seatItem.classList.add(status); // 新しいステータスクラスを追加
-                        // ステータス表示テキストを更新
-                        seatItem.querySelector('.status').textContent = (status === 'empty' ? '空席' : (status === 'occupied' ? '使用中' : '不明'));
-                    } else {
-                        // もしinitializedSeatsがtrueなのにアイテムが見つからない場合は、
-                        // 座席定義が途中で変更された可能性があるが、基本的には発生しないはず
-                        console.warn(`Warning: Seat item for ${seatId} not found.`);
+                    const seatItem = document.createElement('div');
+                    seatItem.id = `seat-${seatId}`;
+                    seatItem.classList.add('seat-item', 'unknown');
+                    const displayName = seatId.replace('_', ' ').replace('seat ', '座席 ');
+                    seatItem.innerHTML = `<strong>${displayName}</strong><br><span class="status">不明</span>`;
+                    seatList.appendChild(seatItem);
+                    seatCount++;
+
+                    // ここから追加：座席3の後に机の要素を挿入
+                    if (seatCount === 3) {
+                        const tableSeparator = document.createElement('div');
+                        tableSeparator.classList.add('table-separator'); // 新しいクラスを付与
+                        seatList.appendChild(tableSeparator);
                     }
                 }
-                updateTimeDiv.textContent = `最終更新: ${new Date().toLocaleTimeString()}`;
-
-            } catch (error) {
-                console.error('座席状況の取得に失敗しました:', error);
-                updateTimeDiv.textContent = `最終更新: 取得エラー`;
-                // エラー発生時は初期化フラグをリセットしない（再読み込み時まで状態を維持）
+                initializedSeats = true;
             }
+
+            // 既存の座席ステータス更新ロジックはそのまま
+            for (const seatId in data) {
+                const status = data[seatId] || "unknown";
+                const seatItem = document.getElementById(`seat-${seatId}`);
+                if (seatItem) {
+                    seatItem.className = `seat-item ${status}`;
+                    seatItem.querySelector('.status').textContent = (
+                        status === 'empty' ? '空席' :
+                            status === 'occupied' ? '使用中' : '不明'
+                    );
+                }
+            }
+
+            updateTimeDiv.textContent = `最終更新: ${new Date().toLocaleTimeString()}`;
+        } catch (err) {
+            console.error('座席状況の取得に失敗:', err);
+            updateTimeDiv.textContent = `最終更新: 取得エラー`;
         }
-
-        // 3秒ごとに座席状況を更新
+    }
         setInterval(fetchSeatStatus, 3000);
-
-        // ページロード時に初回取得
         fetchSeatStatus();
     </script>
 </body>
+
 </html>
